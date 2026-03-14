@@ -1,0 +1,368 @@
+{
+  "name": "devops-job-pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "9fa25077-cf3d-46e4-85ec-7aa9b96a064e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": YOUR_CLAUDE_API_KEY
+            },
+            {
+              "name": "anthropic-version ",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={\"model\":\"claude-haiku-4-5-20251001\",\"max_tokens\":1024,\"messages\":[{\"role\":\"user\",\"content\":\"Score this job for the following candidate. Return only JSON with fields: score (1-10), reason, matching_skills, skill_gaps, tailoring_angle.\\n\\nCANDIDATE PROFILE:\\n- AWS Certified Solutions Architect\\n- 4+ years experience in DevOps, Cloud Engineering, DevSecOps\\n- Currently Cloud Engineer at Whitbread PLC Manchester (2023-present)\\n- Previously DevSecOps Engineer at Egen India (2020-2022)\\n- MSc Advanced Computer Science, University of Kent\\n- Skills: AWS, Azure, Kubernetes, Docker, Helm, Terraform, GitHub Actions, Jenkins, Azure DevOps, Python, Bash, Java, Spring Boot, Prometheus, Grafana, ArgoCD, Snyk, SonarQube\\n- Achieved 99.95% uptime, cut MTTR from 45 to 25 minutes, reduced deployment effort by 45%\\n- Based in Manchester UK, open to hybrid or remote ANYWHERE in UK, willing to travel\\n\\nJOB TO SCORE:\\nTitle: {{ $json.job_title.replace(/\\\"/g, '') }}\\nLocation: {{ $json.location || 'Not specified' }}\\nSalary: {{ $json.salary_range || 'Not specified' }}\\nDescription: {{ ($json.job_description || '').replace(/[\\n\\r\\\"]/g, ' ').substring(0, 800) }}\"}]}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1024,
+        16
+      ],
+      "id": "7bbe9b19-211e-4db0-8965-708122694560",
+      "name": "HTTP Request",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "https://api.apify.com/v2/datasets/VrVlOqjLNyCfERhpg/items?token=YOUR_APIFY_TOKEN",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "d8a7d304-55be-4755-a8c4-9068554e09ad",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = items[0];\n\nlet scored;\ntry {\n  const rawText = item.json.content[0].text;\n  const cleaned = rawText\n    .replace(/```json/g, '')\n    .replace(/```/g, '')\n    .trim();\n  scored = JSON.parse(cleaned);\n} catch(e) {\n  scored = {\n    score: 0,\n    reason: 'Could not parse Claude response',\n    matching_skills: [],\n    skill_gaps: [],\n    tailoring_angle: 'Review manually'\n  };\n}\n\nif (scored.score === 0) return [];\n\nconst job = $('Loop Over Items').item.json;\n\nreturn [{\n  json: {\n    date: new Date().toLocaleDateString('en-GB'),\n    title: job.job_title || 'No title',\n    link: job.job_url || 'No link',\n    location: job.location || '',\n    salary: job.salary_range || '',\n    score: scored.score,\n    reason: scored.reason,\n    matching_skills: Array.isArray(scored.matching_skills)\n      ? scored.matching_skills.join(', ')\n      : scored.matching_skills || '',\n    skill_gaps: Array.isArray(scored.skill_gaps)\n      ? scored.skill_gaps.join(', ')\n      : scored.skill_gaps || '',\n    tailoring_angle: scored.tailoring_angle || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        0
+      ],
+      "id": "753e128f-a161-443f-b2b4-45bfa774db68",
+      "name": "Code in JavaScript1",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        624,
+        0
+      ],
+      "id": "61f39c40-f69a-4c41-b8bb-b28ebdd2016e",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "DevOps Job Hunt",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date ": "={{ $json.date }}",
+            "Job Title": "={{ $json.title }}",
+            "Link": "={{ $json.link }}",
+            "Score ": "={{ $json.score }}",
+            "Reason": "={{ $json.reason }}",
+            "Matching Skills": "={{ $json.matching_skills }}",
+            "Skill Gaps": "={{ $json.skill_gaps }}",
+            "Tailoring Angle": "={{ $json.tailoring_angle }}",
+            "Location": "={{ $json.location }}",
+            "Salary": "={{ $json.salary }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "Date ",
+              "displayName": "Date ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Job Title",
+              "displayName": "Job Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Link",
+              "displayName": "Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Score ",
+              "displayName": "Score ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Matching Skills",
+              "displayName": "Matching Skills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Skill Gaps",
+              "displayName": "Skill Gaps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Tailoring Angle",
+              "displayName": "Tailoring Angle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Location",
+              "displayName": "Location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Salary",
+              "displayName": "Salary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1824,
+        16
+      ],
+      "id": "bc24a90b-259a-46cf-898e-51e0f8c7f13e",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_N8N_GOOGLE_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1664,
+        0
+      ],
+      "id": "8eb6728a-899d-4caa-beed-01a62eec23c2",
+      "name": "Wait",
+      "webhookId": "YOUR_WEBHOOK_ID"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "timezone": "Europe/London",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "0c6f7597-0c70-4952-9103-6f836da2be63",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "id": "iKE0UPOXAQbcjvxj",
+  "tags": []
+}
