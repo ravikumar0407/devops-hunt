@@ -1,12 +1,9 @@
 FROM n8nio/n8n:latest
 
-USER root
-
-RUN mkdir -p /home/node/.n8n && \
-    chown -R node:node /home/node/.n8n
-
-USER node
-
 EXPOSE 5678
 
-CMD ["n8n", "start"]
+ENV N8N_PORT=5678
+ENV N8N_PROTOCOL=https
+ENV N8N_HOST=0.0.0.0
+
+ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
